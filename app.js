@@ -3239,6 +3239,10 @@ const MP_PAYMENT_LINKS = {
   // monthly: "https://mpago.la/xxxxxxx",
 };
 
+// Payments API (Cloudflare Worker, repo metaver5o/girarota-pay). It holds the
+// token server-side. Empty = not deployed yet: checkout falls back to the link.
+const PAY_API = "";
+
 const MercadoPagoManager = {
   pollingTimer: null,
 
@@ -3270,8 +3274,63 @@ const MercadoPagoManager = {
   // Payment status can't be checked from the browser without a token.
   pollSpecificPayment() {},
 
-  openCheckout(planId = null) {
+  async checkoutViaApi(plan) {
+    const emailInput = document.getElementById("subscriberEmailInput");
+    const email = (emailInput?.value || localStorage.getItem("geofrete_user_email") || "").trim();
+    if (!email.includes("@")) {
+      alert("Por favor, preencha seu e-mail antes de pagar. Ele identifica o seu pagamento.");
+      emailInput?.focus();
+      return;
+    }
+    localStorage.setItem("geofrete_user_email", email);
+    try {
+      showPaymentToast("Gerando pagamento no Mercado Pago...");
+      const res = await fetch(`${PAY_API}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: plan.id, email }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "checkout indisponível");
+      sessionStorage.setItem("girarota_current_order_ref", data.ref);
+      window.open(data.url, "_blank");
+      showPaymentToast("Pague no Mercado Pago. O GiraRota libera o PRO assim que o pagamento for aprovado.");
+      this.pollOrder(data.ref);
+    } catch (e) {
+      alert(`Não foi possível iniciar o pagamento: ${e.message}`);
+    }
+  },
+
+  // Asks the payments API whether this order was paid. Only the API's answer
+  // unlocks PRO; URL parameters from the redirect are never trusted.
+  pollOrder(ref, maxMinutes = 10) {
+    this.stopPolling();
+    const until = Date.now() + maxMinutes * 60000;
+    this.pollingTimer = setInterval(async () => {
+      if (Date.now() > until) return this.stopPolling();
+      try {
+        const res = await fetch(`${PAY_API}/status?ref=${encodeURIComponent(ref)}`);
+        const data = await res.json();
+        if (data.status !== "approved") return;
+        this.stopPolling();
+        const used = JSON.parse(localStorage.getItem("girarota_processed_payments") || "[]");
+        if (used.includes(ref)) return;
+        used.push(ref);
+        localStorage.setItem("girarota_processed_payments", JSON.stringify(used));
+        const plan = PLANS_CONFIG[data.plan] || PLANS_CONFIG.monthly;
+        SubscriptionManager.activatePro(plan.id, data.days || plan.days, `MP-${ref}`);
+        showPaymentToast(`🎉 Pagamento aprovado! Assinatura ${plan.name} liberada.`);
+        playFanfareBeep();
+        closeSubscriptionModal();
+      } catch (e) {
+        console.warn("Payment status check failed:", e.message);
+      }
+    }, 4000);
+  },
+
+  async openCheckout(planId = null) {
     const plan = PLANS_CONFIG[planId || currentSelectedPlan] || PLANS_CONFIG.monthly;
+    if (PAY_API) return this.checkoutViaApi(plan);
     const link = this.getPaymentLink(plan.id);
     if (link) {
       window.open(link, "_blank");
@@ -3284,6 +3343,15 @@ const MercadoPagoManager = {
   verifyReturnFromURL() {
     try {
       const urlParams = new URLSearchParams(window.location.search);
+      if (PAY_API) {
+        const ref = urlParams.get("ext_ref");
+        if (ref) {
+          showPaymentToast("⏳ Confirmando seu pagamento com o Mercado Pago...");
+          this.pollOrder(ref);
+        }
+        if ([...urlParams.keys()].length) window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
       const collectionStatus = urlParams.get("collection_status") || urlParams.get("status");
       const paymentId = urlParams.get("payment_id") || urlParams.get("collection_id");
       const planId = urlParams.get("plan") || "monthly";
