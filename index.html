@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GiraRota | Bipou a Etiqueta, a Rota tá Feita</title>
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="apple-touch-icon" href="assets/logo.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#10b981">
+  <meta name="description" content="GiraRota - Bipou a etiqueta, a rota tá feita. Otimizador de rotas last-mile para entregadores, motoboys e vans com scanner inteligente.">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS for OpenStreetMap -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- ZXing Multi-Format Barcode Engine (Code 128, EAN-13, QR, DataMatrix) -->
+  <script src="https://unpkg.com/@zxing/library@0.23.0/umd/index.min.js"></script>
+  <!-- HTML5 QR Code & Barcode Scanner -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- Tesseract.js Client-Side OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- QRCode.js for Pix QR Code Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Google Identity Services for Social Login -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    #map {
+      height: 380px;
+      width: 100%;
+      border-radius: 0.75rem;
+      z-index: 10;
+    }
+    .leaflet-popup-content-wrapper {
+      background: #1e293b;
+      color: #f8fafc;
+      border-radius: 0.5rem;
+    }
+    .leaflet-popup-tip {
+      background: #1e293b;
+    }
+    .leaflet-control-layers {
+      background: #1e293b !important;
+      color: #f8fafc !important;
+      border: 1px solid #334155 !important;
+      border-radius: 0.5rem !important;
+      font-size: 11px !important;
+      padding: 6px 10px !important;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+    }
+    .leaflet-control-layers-base label {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 2px;
+    }
+    /* Numbered stop pins */
+    .stop-marker {
+      background: #2563eb;
+      color: white;
+      border: 2px solid white;
+      border-radius: 50%;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      transition: background 0.3s ease;
+    }
+    .delivered-marker {
+      background: #ef4444 !important;
+      color: white;
+      border: 2px solid white;
+      border-radius: 50%;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+      transition: all 0.3s ease;
+    }
+    .origin-marker {
+      background: #10b981;
+      color: white;
+      border: 2px solid white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+    }
+    /* Driver Real-Time Live GPS Marker */
+    .driver-live-marker {
+      background: #3b82f6 !important;
+      border: 3px solid #ffffff !important;
+      border-radius: 50% !important;
+      width: 18px !important;
+      height: 18px !important;
+      box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.4);
+      animation: driverPulse 2s infinite ease-in-out;
+    }
+    @keyframes driverPulse {
+      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(59, 130, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+    /* Map Fullscreen Overlay Mode */
+    .map-fullscreen-active {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 99999 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+      border: none !important;
+      background: #020617 !important;
+    }
+    .map-fullscreen-active #map {
+      height: 100vh !important;
+      width: 100vw !important;
+      border-radius: 0 !important;
+    }
+    .map-fullscreen-active #mapHeaderRow {
+      display: none !important;
+    }
+    .map-fullscreen-active #mapWrapper {
+      height: 100vh !important;
+      width: 100vw !important;
+      border-radius: 0 !important;
+    /* GF Animated Rotating Logo */
+    @keyframes orbitSpin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.4)) drop-shadow(0 0 10px rgba(52, 211, 153, 0.2)); }
+      50% { filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.8)) drop-shadow(0 0 18px rgba(52, 211, 153, 0.5)); }
+    }
+    .gf-logo-orbit {
+      animation: orbitSpin 5s linear infinite;
+      transform-origin: 24px 24px;
+    }
+    .gf-logo-container:hover .gf-logo-orbit {
+      animation: orbitSpin 1.8s linear infinite;
+    }
+    .gf-glow-effect {
+      animation: pulseGlow 3s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased">
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50 backdrop-blur-md bg-opacity-90">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div onclick="handleLogoSecretClick()" class="flex items-center space-x-3 cursor-pointer select-none group" title="GiraRota">
+        <div class="relative w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/40 flex-shrink-0 bg-slate-900 group-hover:border-emerald-400 group-hover:shadow-emerald-500/40 transition-all duration-300">
+          <img src="assets/logo-animated.gif" alt="GiraRota" class="w-full h-full object-cover">
+        </div>
+        <div>
+          <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+            <h1 class="text-xl font-black tracking-tight text-white flex items-center">
+              <span>Gira</span><span class="text-emerald-400">Rota</span>
+            </h1>
+            <button id="headerTrialBtn" onclick="openTrialSignupModal()" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs px-2.5 py-0.5 rounded-full font-black flex items-center space-x-1 shadow-md shadow-emerald-500/20 transition transform active:scale-95 cursor-pointer" title="Clique para testar 7 dias grátis">
+              <i data-lucide="gift" class="w-3.5 h-3.5 text-slate-950"></i>
+              <span id="headerTrialText">7 Dias Grátis</span>
+            </button>
+            <button id="headerProBadge" onclick="openSubscriptionModal()" class="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 text-xs px-2.5 py-0.5 rounded-full font-black flex items-center space-x-1.5 shadow-md shadow-amber-500/20 transition transform active:scale-95 cursor-pointer" title="Clique para ver planos ou gerenciar assinatura">
+              <i data-lucide="crown" class="w-3.5 h-3.5 text-slate-950"></i>
+              <span id="headerProText">R$ 49,99/mês • Assinar PRO</span>
+            </button>
+            <button id="headerReferralBtn" onclick="openReferralModal()" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs px-2.5 py-0.5 rounded-full font-black flex items-center space-x-1 shadow-md shadow-purple-500/20 transition transform active:scale-95 cursor-pointer" title="Indique colegas e ganhe 1 mês grátis!">
+              <i data-lucide="gift" class="w-3.5 h-3.5 text-yellow-300"></i>
+              <span class="hidden sm:inline">Indique & Ganhe</span>
+              <span class="sm:hidden">Indique</span>
+            </button>
+          </div>
+          <p class="text-xs text-slate-400">Bipou a etiqueta, a rota tá feita</p>
+        </div>
+      </div>
+
+      <!-- Status Badge, Social Auth & Admin Settings -->
+      <div class="flex items-center space-x-2">
+        <div class="bg-emerald-950/60 border border-emerald-700/60 text-emerald-400 px-3 py-1 rounded-lg text-xs font-semibold items-center space-x-1.5 hidden sm:flex">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>100% Online</span>
+        </div>
+
+        <!-- Social Auth Login Button / User Profile -->
+        <div id="headerAuthContainer" class="relative">
+          <!-- Logged Out State -->
+          <button id="authLoginBtn" onclick="openPrivyAuthModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center space-x-1.5 transition transform active:scale-95 cursor-pointer shadow-sm">
+            <i data-lucide="user" class="w-3.5 h-3.5 text-brand-400"></i>
+            <span>Entrar</span>
+          </button>
+
+          <!-- Logged In State (Dropdown) -->
+          <div id="authUserMenu" class="hidden relative">
+            <button onclick="toggleUserDropdown()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 py-1 pl-1.5 pr-2.5 rounded-xl flex items-center space-x-2 transition cursor-pointer">
+              <div id="userAvatarBubble" class="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-[11px] font-black uppercase shadow overflow-hidden">
+                M
+              </div>
+              <span id="userNavName" class="text-xs font-bold max-w-[90px] truncate text-white">Usuário</span>
+              <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div id="userDropdownMenu" class="hidden absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5 shadow-2xl z-50 backdrop-blur-xl">
+              <div class="border-b border-slate-800 pb-2">
+                <div id="userDropdownFullName" class="text-xs font-bold text-white truncate">Nome do Usuário</div>
+                <div id="userDropdownHandle" class="text-[10px] text-slate-400 font-mono truncate">did:privy:...</div>
+                <div id="userDropdownBadge" class="mt-1 inline-block bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                  Gratuito
+                </div>
+              </div>
+              <div class="space-y-1 text-xs text-slate-300">
+                <button onclick="openSubscriptionModal(); toggleUserDropdown();" class="w-full text-left py-1.5 px-2 rounded-lg hover:bg-slate-800 flex items-center space-x-2 transition">
+                  <i data-lucide="crown" class="w-3.5 h-3.5 text-amber-400"></i>
+                  <span>Minha Assinatura / Planos</span>
+                </button>
+                <button onclick="openReferralModal(); toggleUserDropdown();" class="w-full text-left py-1.5 px-2 rounded-lg hover:bg-slate-800 flex items-center space-x-2 transition text-purple-300 font-semibold">
+                  <i data-lucide="gift" class="w-3.5 h-3.5 text-purple-400"></i>
+                  <span>Indique &amp; Ganhe (Mês Grátis)</span>
+                </button>
+                <button id="userDropdownSettings" onclick="openAdminSettings(); toggleUserDropdown();" class="hidden w-full text-left py-1.5 px-2 rounded-lg hover:bg-slate-800 flex items-center space-x-2 transition text-amber-400 font-semibold">
+                  <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+                  <span>Painel Admin (Restrito)</span>
+                </button>
+              </div>
+              <div class="border-t border-slate-800 pt-1.5">
+                <button onclick="SocialAuthManager.logout(); toggleUserDropdown();" class="w-full text-left py-1.5 px-2 rounded-lg hover:bg-red-500/20 text-red-400 hover:text-red-300 flex items-center space-x-2 transition text-xs font-semibold">
+                  <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                  <span>Sair da Conta</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin Settings Button (Hidden from public by default) -->
+        <button id="adminSettingsBtn" onclick="openAdminSettings()" class="hidden bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 py-1.5 px-2.5 rounded-xl text-xs font-bold border border-amber-500/30 transition flex items-center space-x-1.5 shadow" title="Painel do Administrador">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i>
+          <span class="text-[11px]">Admin</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-5xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+
+    <!-- 7-Day Free Trial Callout Banner -->
+    <div id="trialCalloutBanner" class="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border border-emerald-500/40 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+      <div class="flex items-center space-x-3">
+        <div class="bg-emerald-500 p-2 rounded-xl text-slate-950 shadow-md shadow-emerald-500/30 flex-shrink-0">
+          <i data-lucide="gift" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h4 class="font-black text-sm text-white">Experimente 1 Semana Grátis!</h4>
+            <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">Sem Cartão</span>
+          </div>
+          <p class="text-xs text-slate-300">Roteirize seus pacotes sem limites por 7 dias. Cadastro rápido com WhatsApp.</p>
+        </div>
+      </div>
+      <button onclick="openTrialSignupModal()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition transform active:scale-95 whitespace-nowrap cursor-pointer">
+        <span>Ativar Meus 7 Dias Grátis</span>
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Online Scanner Hero Action Banner -->
+    <div class="bg-gradient-to-r from-brand-950/90 via-slate-900 to-slate-900 border border-brand-800/60 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center space-x-3.5">
+        <div class="bg-brand-600 p-3 rounded-2xl text-white shadow-lg shadow-brand-500/30 flex-shrink-0">
+          <i data-lucide="camera" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h3 class="font-bold text-base text-white">Scanner de Etiquetas & OCR</h3>
+            <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+              Online
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Escaneie códigos de barras com a câmera ou teste o simulador de bip contínuo em lote.</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 w-full sm:w-auto">
+        <button onclick="openCameraScanner()" class="flex-1 sm:flex-initial bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2.5 px-3.5 rounded-xl shadow-lg shadow-emerald-900/40 flex items-center justify-center space-x-1.5 transition transform active:scale-98">
+          <i data-lucide="camera" class="w-4 h-4"></i>
+          <span>Abrir Câmera</span>
+        </button>
+        <input type="file" id="labelPhotoInput" accept="image/*" class="hidden" onchange="handleLabelPhoto(event)">
+        <button onclick="document.getElementById('labelPhotoInput').click()" class="flex-1 sm:flex-initial bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold py-2.5 px-3.5 rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition transform active:scale-98">
+          <i data-lucide="image" class="w-4 h-4 text-brand-400"></i>
+          <span>Foto / OCR</span>
+        </button>
+        <button onclick="simulateRapidScan(event)" class="flex-1 sm:flex-initial bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold py-2.5 px-3.5 rounded-xl shadow-lg shadow-purple-900/40 flex items-center justify-center space-x-1.5 transition transform active:scale-98">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+          <span>Simular Lote</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Top Action Cards -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Left Column: Input & Controls (5 cols) -->
+      <div class="lg:col-span-5 space-y-4">
+        
+        <!-- Batch Input Panel -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="font-bold text-slate-200 flex items-center space-x-2">
+              <i data-lucide="scan-line" class="w-5 h-5 text-brand-500"></i>
+              <span>Pacotes da Rota</span>
+            </h2>
+            <span id="packageCountBadge" class="bg-slate-800 text-brand-400 text-xs px-2.5 py-1 rounded-full font-bold">
+              0 pacotes
+            </span>
+          </div>
+
+          <!-- Simulação & Teste com GPS Local -->
+          <div class="bg-gradient-to-r from-brand-950/40 via-slate-950 to-slate-900 border border-brand-500/30 rounded-2xl p-4 shadow-lg space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="flex h-2 w-2 relative">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span class="text-xs font-bold text-slate-200 uppercase tracking-wider">Modo Teste & Demonstração</span>
+              </div>
+              <span class="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
+                10 Entregas
+              </span>
+            </div>
+
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              Veja a mágica acontecer: autorize seu GPS e o GiraRota gera automaticamente uma rota de entregas simuladas na sua cidade e bairro!
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-2 pt-1">
+              <button onclick="simulateRouteFromGPS()" id="btnGpsSimulation" class="flex-1 bg-gradient-to-r from-brand-600 to-amber-600 hover:from-brand-500 hover:to-amber-500 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-lg shadow-brand-900/30 transition transform active:scale-98">
+                <i data-lucide="crosshair" class="w-4 h-4"></i>
+                <span id="btnGpsSimulationText">🎯 Simular Rota no Meu GPS</span>
+              </button>
+
+              <button onclick="simulateRouteFallback()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition border border-slate-700 active:scale-98 flex-shrink-0">
+                <i data-lucide="shuffle" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span>Exemplo Padrão</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Origin Location -->
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+              <span>Ponto de Partida (Depósito / Você):</span>
+              <button onclick="getCurrentLocation()" class="text-brand-400 hover:underline flex items-center space-x-1">
+                <i data-lucide="locate" class="w-3.5 h-3.5"></i>
+                <span>Usar Meu GPS</span>
+              </button>
+            </label>
+            <input type="text" id="originAddress" value="Praça da Sé - Centro Histórico, São Paulo - SP" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500 transition">
+            <input type="hidden" id="originLat" value="-23.5505">
+            <input type="hidden" id="originLng" value="-46.6333">
+          </div>
+
+          <!-- Manual / OCR JSON & Text Input -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-slate-400">Dados Escaneados (OCR / Endereços):</label>
+              <button onclick="clearBatch()" class="text-red-400 hover:underline text-xs">Limpar</button>
+            </div>
+            <textarea id="rawLabelsInput" rows="6" placeholder="Cole aqui o texto OCR ou adicione um endereço por linha... Ex:
+Avenida Paulista, 1578 - Bela Vista, SP
+Rua Augusta, 1000 - Consolação, SP
+Rua dos Pinheiros, 400 - Pinheiros, SP" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-brand-500 transition resize-none"></textarea>
+          </div>
+
+          <!-- Optimize CTA Button -->
+          <button id="optimizeBtn" onclick="runOptimization()" class="w-full bg-gradient-to-r from-brand-600 to-blue-600 hover:from-brand-500 hover:to-blue-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 transition transform active:scale-98">
+            <i data-lucide="zap" class="w-5 h-5"></i>
+            <span id="optimizeBtnText">Calcular Rota Ideal (TSP)</span>
+          </button>
+        </div>
+
+        <!-- Metric Summary Panel (hidden before optimization) -->
+        <div id="metricsPanel" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Resumo do Itinerário</h3>
+            <button id="voiceToggleBtn" onclick="AiVoiceAssistant.toggle()" class="bg-brand-500/15 hover:bg-brand-500/25 text-brand-300 border border-brand-500/30 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer shadow-sm" title="Ativar ou desativar narração por voz da IA">
+              <i data-lucide="volume-2" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span id="voiceToggleText">Voz IA: Ativada</span>
+            </button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <div class="text-2xl font-black text-brand-400" id="statStops">0</div>
+              <div class="text-xs text-slate-400 mt-1" id="statStopsLabel">Paradas</div>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <div class="text-2xl font-black text-emerald-400" id="statDistance">0 km</div>
+              <div class="text-xs text-slate-400 mt-1" id="statDistanceLabel">Distância</div>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <div class="text-2xl font-black text-amber-400" id="statTime">0 min</div>
+              <div class="text-xs text-slate-400 mt-1" id="statTimeLabel">Tempo Est.</div>
+            </div>
+          </div>
+          <div class="pt-2 border-t border-slate-800 flex items-center space-x-2">
+            <button onclick="exportBatchToGoogleMaps()" class="flex-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold py-2 px-2.5 rounded-xl flex items-center justify-center space-x-1.5 transition active:scale-98" title="Abre a rota sequenciada diretamente no Google Maps">
+              <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+              <span>Google Maps Multi-Rota</span>
+            </button>
+            <button onclick="exportRouteGPX()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-2 px-3 rounded-xl border border-slate-700 flex items-center space-x-1 transition active:scale-98" title="Exportar arquivo GPX para GPS/Waze">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>GPX</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Map & Route Itinerary (7 cols) -->
+      <div class="lg:col-span-7 space-y-4">
+        
+        <!-- Interactive Map -->
+        <div id="mapCardContainer" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl relative transition-all">
+          <div id="mapHeaderRow" class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div class="flex items-center space-x-2">
+              <h2 class="font-bold text-slate-200 flex items-center space-x-2 text-sm">
+                <i data-lucide="map" class="w-4 h-4 text-brand-500"></i>
+                <span>Mapa do Trajeto</span>
+              </h2>
+              <button id="btnMapFullscreen" onclick="toggleMapFullscreen()" class="flex items-center space-x-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg transition font-bold cursor-pointer shadow-sm hover:text-white" title="Expandir mapa para tela cheia">
+                <i id="btnMapFullscreenIcon" data-lucide="maximize" class="w-3.5 h-3.5 text-brand-400"></i>
+                <span id="btnMapFullscreenText">Tela Cheia</span>
+              </button>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button id="btnLiveGps" onclick="toggleLiveGpsTracking()" class="flex items-center space-x-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg transition font-medium cursor-pointer" title="Ativar GPS em tempo real com auto-detecção de chegada">
+                <span id="liveGpsDot" class="w-2 h-2 rounded-full bg-slate-500 inline-block"></span>
+                <span id="liveGpsLabel">GPS Ao Vivo</span>
+              </button>
+              <span class="text-xs text-slate-400 hidden sm:flex items-center space-x-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                <span>Partida</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-brand-500 inline-block ml-2"></span>
+                <span>Pendente</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block ml-2"></span>
+                <span>Entregue</span>
+              </span>
+            </div>
+          </div>
+          
+          <div id="mapWrapper" class="relative w-full overflow-hidden rounded-xl">
+            <div id="map"></div>
+
+            <!-- Fullscreen Top Floating Bar (shown when fullscreen active) -->
+            <div id="fsTopOverlay" class="hidden absolute top-4 left-4 right-4 z-20 flex items-center justify-between gap-2 pointer-events-none">
+              <div class="flex items-center space-x-2 pointer-events-auto">
+                <button onclick="toggleMapFullscreen()" class="bg-slate-900/95 hover:bg-slate-800 text-white border border-slate-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-2xl backdrop-blur-md cursor-pointer transition">
+                  <i data-lucide="minimize" class="w-4 h-4 text-brand-400"></i>
+                  <span>Sair da Tela Cheia</span>
+                </button>
+                <div class="bg-slate-900/90 border border-slate-800 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hidden md:flex items-center space-x-2 backdrop-blur-md shadow-xl">
+                  <i data-lucide="navigation" class="w-3.5 h-3.5 text-emerald-400 animate-pulse"></i>
+                  <span>Navegação GiraRota Ativa</span>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2 pointer-events-auto">
+                <button onclick="simulateArrivalAtNextStop()" class="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 shadow-xl transition cursor-pointer" title="Testar chegada no endereço">
+                  <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-950"></i>
+                  <span>Simular Chegada</span>
+                </button>
+                <button onclick="centerMapOnDriverOrNext()" class="bg-slate-900/95 hover:bg-slate-800 text-slate-200 border border-slate-700 p-2 rounded-xl text-xs shadow-xl backdrop-blur-md cursor-pointer transition" title="Centralizar visualização">
+                  <i data-lucide="crosshair" class="w-4 h-4 text-emerald-400"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Fullscreen Bottom HUD Card (shown when fullscreen active & route calculated) -->
+            <div id="fsBottomOverlay" class="hidden absolute bottom-5 left-4 right-4 max-w-lg mx-auto z-20 pointer-events-auto">
+              <div class="bg-slate-900/95 border border-slate-700/90 rounded-2xl p-4 shadow-2xl backdrop-blur-md space-y-3">
+                <div class="flex items-start justify-between">
+                  <div class="flex items-start space-x-2.5">
+                    <span id="fsCurrentStopBadge" class="bg-brand-600 text-white font-black text-xs w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <div>
+                      <div class="flex items-center space-x-2">
+                        <span class="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Próxima Parada</span>
+                        <span id="fsProximityBadge" class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/30">A caminho</span>
+                      </div>
+                      <h4 id="fsCurrentStopName" class="font-bold text-white text-sm">Destinatário</h4>
+                      <p id="fsCurrentStopAddress" class="text-xs text-slate-300 line-clamp-1">Endereço da entrega</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-2 border-t border-slate-800 gap-2">
+                  <div class="flex space-x-1.5">
+                    <a id="fsWazeBtn" href="#" target="_blank" class="bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1 transition">
+                      <i data-lucide="compass" class="w-3.5 h-3.5"></i>
+                      <span>Waze</span>
+                    </a>
+                    <a id="fsGmapsBtn" href="#" target="_blank" class="bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1 transition">
+                      <i data-lucide="map" class="w-3.5 h-3.5"></i>
+                      <span>Maps</span>
+                    </a>
+                  </div>
+                  <button id="fsArrivedBtn" onclick="openArrivalModalForCurrentStop()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2 rounded-xl text-xs flex items-center space-x-1.5 shadow-lg shadow-emerald-500/20 transition transform active:scale-95 cursor-pointer">
+                    <i data-lucide="check-circle" class="w-4 h-4 text-slate-950"></i>
+                    <span>Cheguei no Local</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Ordered Itinerary List -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-bold text-slate-200 flex items-center space-x-2 text-sm">
+              <i data-lucide="list-ordered" class="w-4 h-4 text-brand-500"></i>
+              <span>Sequência de Entregas Otimizada</span>
+            </h2>
+            <span id="itineraryStatus" class="text-xs text-slate-500">Aguardando cálculo...</span>
+          </div>
+
+          <!-- Stops Container -->
+          <div id="stopsList" class="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+            <div class="text-center py-12 text-slate-500 text-xs">
+              <i data-lucide="package-search" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+              Carregue um lote de pacotes e clique em "Calcular Rota Ideal" para ver o itinerário ordenado.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Arrival / Destination Reached Modal -->
+  <div id="arrivalModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-[100000] flex items-center justify-center p-4">
+    <div class="bg-slate-900 border-2 border-emerald-500/80 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-[0_0_50px_rgba(16,185,129,0.3)] relative animate-in fade-in zoom-in duration-200">
+      
+      <!-- Modal Header with Pulsing Beacon -->
+      <div class="flex items-start justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
+            <i data-lucide="map-pin" class="w-6 h-6"></i>
+            <span class="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+            </span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              Chegada Detectada
+            </span>
+            <h3 class="font-black text-lg text-white mt-0.5">Você chegou ao destino!</h3>
+          </div>
+        </div>
+        <button onclick="closeArrivalModal()" class="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Stop Card Details -->
+      <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-900 pb-2">
+          <div class="flex items-center space-x-2">
+            <span id="arrivalStopBadge" class="bg-brand-600 text-white font-black text-xs w-6 h-6 rounded-full flex items-center justify-center">
+              1
+            </span>
+            <span id="arrivalStopSequenceText" class="font-bold text-xs text-slate-300">Parada #1 da Rota</span>
+          </div>
+          <span id="arrivalProximityText" class="text-[11px] font-bold text-emerald-400 flex items-center space-x-1">
+            <i data-lucide="navigation" class="w-3 h-3"></i>
+            <span>No endereço de entrega</span>
+          </span>
+        </div>
+
+        <div>
+          <h4 id="arrivalRecipientName" class="font-bold text-sm text-white">Nome do Destinatário</h4>
+          <p id="arrivalRecipientAddress" class="text-xs text-slate-300 mt-0.5 leading-relaxed">Rua das Flores, 120 - Centro</p>
+        </div>
+
+        <div id="arrivalTrackingRow" class="text-[11px] text-slate-400 font-mono bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center justify-between">
+          <span>Pacote / Etiqueta:</span>
+          <strong id="arrivalTrackingCode" class="text-amber-400">BR-SP-001</strong>
+        </div>
+      </div>
+
+      <!-- Quick Delivery Feedback / Note (Optional) -->
+      <div class="space-y-1.5">
+        <label class="text-xs font-semibold text-slate-300">Recebido por (opcional):</label>
+        <input type="text" id="arrivalReceiverInput" placeholder="Ex: Próprio destinatário, portaria, vizinho..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none">
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="space-y-2 pt-1">
+        <button id="btnConfirmArrivalDelivery" onclick="confirmArrivalDelivery()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black py-3 px-4 rounded-xl text-sm flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/30 transition transform active:scale-98 cursor-pointer">
+          <i data-lucide="check-circle-2" class="w-5 h-5 text-slate-950"></i>
+          <span>Confirmar Entrega Realizada</span>
+        </button>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="reportDeliveryIssue()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition cursor-pointer">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+            <span>Ausente / Insucesso</span>
+          </button>
+          <button onclick="closeArrivalModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition cursor-pointer">
+            <span>Voltar ao Mapa</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Camera Scanner Modal -->
+  <div id="cameraModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></div>
+          <h3 class="font-bold text-sm text-white flex items-center space-x-1.5">
+            <i data-lucide="scan" class="w-4 h-4 text-emerald-400"></i>
+            <span>Scanner de Etiquetas de Entrega</span>
+          </h3>
+        </div>
+        <button onclick="closeCameraScanner()" class="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-800">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Viewfinder Container -->
+      <div class="relative bg-black rounded-2xl overflow-hidden aspect-[4/3] flex items-center justify-center border-2 border-emerald-500/50 shadow-inner">
+        <video id="scannerVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
+        <div id="scannerReader" class="hidden w-full h-full"></div>
+        
+        <!-- Laser Target Guide Overlay -->
+        <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
+          <div class="w-5/6 h-32 border-2 border-emerald-400 rounded-2xl relative shadow-[0_0_20px_rgba(16,185,129,0.35)] flex items-center justify-center">
+            <!-- Animated red laser scanner line -->
+            <div class="w-full h-0.5 bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse"></div>
+            <!-- Target corners -->
+            <span class="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-emerald-400 rounded-tl"></span>
+            <span class="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-emerald-400 rounded-tr"></span>
+            <span class="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-emerald-400 rounded-bl"></span>
+            <span class="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-emerald-400 rounded-br"></span>
+          </div>
+          <p class="text-[11px] text-white font-bold mt-3 bg-slate-950/85 px-3.5 py-1 rounded-full backdrop-blur-sm border border-slate-800 shadow-md flex items-center space-x-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>Aponte para o código de barras (Bip Automático 1D/2D)</span>
+          </p>
+        </div>
+
+        <!-- Scan Success Flash Overlay -->
+        <div id="scannerFlash" class="hidden absolute inset-0 bg-emerald-500/50 backdrop-blur-xs transition-opacity duration-150"></div>
+      </div>
+
+      <!-- Scanned in Session Counter -->
+      <div class="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+        <span class="text-slate-400">Pacotes lidos nesta sessão:</span>
+        <span id="sessionScanCount" class="font-black text-emerald-400 text-sm">0 pacotes</span>
+      </div>
+
+      <!-- Duplicate Warning Toast -->
+      <div id="duplicateAlertToast" class="hidden bg-amber-500/20 border border-amber-500/50 text-amber-300 p-2.5 rounded-xl text-xs flex items-center space-x-2">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 flex-shrink-0"></i>
+        <span id="duplicateAlertMsg">Pacote já lido anteriormente!</span>
+      </div>
+
+      <!-- OCR Progress Toast -->
+      <div id="ocrProgressToast" class="hidden bg-blue-500/20 border border-blue-500/50 text-blue-300 p-2.5 rounded-xl text-xs flex items-center space-x-2 animate-pulse">
+        <i data-lucide="loader" class="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin"></i>
+        <span id="ocrProgressMsg">Processando OCR da etiqueta...</span>
+      </div>
+
+      <!-- Scanner Action Controls -->
+      <div class="grid grid-cols-3 gap-2">
+        <button onclick="triggerMockCapture()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2.5 px-2 rounded-xl font-medium border border-slate-700 transition flex items-center justify-center space-x-1">
+          <i data-lucide="barcode" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Bipar (+1)</span>
+        </button>
+        <button onclick="document.getElementById('labelPhotoInput').click()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2.5 px-2 rounded-xl font-medium border border-slate-700 transition flex items-center justify-center space-x-1">
+          <i data-lucide="image" class="w-3.5 h-3.5 text-brand-400"></i>
+          <span>Foto/OCR</span>
+        </button>
+        <button onclick="closeCameraScanner()" class="bg-brand-600 hover:bg-brand-500 text-white text-xs py-2.5 px-2 rounded-xl font-bold transition flex items-center justify-center space-x-1">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i>
+          <span>Ver Rota</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privy-Style Social Login Modal -->
+  <div id="privyAuthModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative my-6">
+      
+      <!-- Close Button -->
+      <button onclick="closePrivyAuthModal()" class="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-lg transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <!-- VIEW 1: MAIN PRIVY SOCIAL OPTIONS -->
+      <div id="privyMainView" class="space-y-4">
+        <div class="text-center space-y-1.5 pt-1">
+          <div class="inline-flex p-2.5 bg-gradient-to-br from-brand-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-brand-500/20 mb-1">
+            <i data-lucide="shield-check" class="w-6 h-6"></i>
+          </div>
+          <h3 class="font-black text-lg text-white tracking-tight">Acesse sua Conta</h3>
+          <p class="text-xs text-slate-400">Faça login com 1 clique para sincronizar suas rotas e assinatura em qualquer dispositivo.</p>
+        </div>
+
+        <!-- Social Action Buttons -->
+        <div class="space-y-2.5 pt-1">
+          <!-- Google Button -->
+          <button onclick="SocialAuthManager.loginWithGoogle()" class="w-full bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center space-x-2.5 active:scale-98 cursor-pointer">
+            <svg class="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Continuar com Google</span>
+          </button>
+
+          <!-- Apple Button -->
+          <button onclick="SocialAuthManager.loginWithApple()" class="w-full bg-black hover:bg-slate-950 text-white border border-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center space-x-2.5 active:scale-98 cursor-pointer">
+            <svg class="w-4 h-4 fill-current" viewBox="0 0 170 170">
+              <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.07-7.72-7.85-12.06-14.35-6.54-9.84-11.45-20.73-14.73-32.68-3.28-11.95-4.92-23.01-4.92-33.17 0-14.59 3.69-26.78 11.07-36.59 7.38-9.81 16.71-14.85 27.99-15.13 4.89 0 10.36 1.34 16.41 4.02 6.05 2.68 9.94 4.08 11.66 4.2 2.14-.38 6.43-1.89 12.87-4.53 6.44-2.64 11.88-3.8 16.32-3.48 12.18.9 22.18 5.75 30 14.54-10.74 6.52-16 15.42-15.78 26.68.23 8.87 3.65 16.32 10.26 22.36 6.61 6.04 14.45 9.48 23.52 10.31-2.12 6.41-4.78 13.01-7.98 19.8zM119.22 31.84c0-7.39 2.65-14.19 7.95-20.41 5.3-6.22 11.83-10.35 19.59-12.4 1.05 7.82-1.37 14.93-7.26 21.32-5.89 6.39-12.65 10.24-20.28 11.49z"/>
+            </svg>
+            <span>Continuar com Apple</span>
+          </button>
+
+          <!-- WhatsApp / Celular Button -->
+          <button onclick="SocialAuthManager.showPhoneView()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-900/30 transition flex items-center justify-center space-x-2.5 active:scale-98 cursor-pointer">
+            <i data-lucide="phone" class="w-4 h-4"></i>
+            <span>Entrar com WhatsApp / Celular</span>
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="relative flex py-1 items-center">
+          <div class="flex-grow border-t border-slate-800"></div>
+          <span class="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-500">ou com e-mail</span>
+          <div class="flex-grow border-t border-slate-800"></div>
+        </div>
+
+        <!-- Email Magic Link / OTP Input -->
+        <form onsubmit="SocialAuthManager.handleEmailSubmit(event)" class="space-y-2">
+          <div class="relative">
+            <input type="email" id="privyEmailInput" required placeholder="seu.email@exemplo.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-3 pr-20 text-xs text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none">
+            <button type="submit" class="absolute right-1 top-1 bottom-1 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 rounded-lg transition cursor-pointer">
+              Enviar
+            </button>
+          </div>
+        </form>
+
+        <!-- Web3 Option -->
+        <div class="pt-1">
+          <button onclick="SocialAuthManager.loginWithWeb3()" class="w-full bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 font-semibold text-[11px] py-2 px-3 rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer">
+            <i data-lucide="wallet" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Conectar Carteira Web3 (MetaMask / Phantom)</span>
+          </button>
+        </div>
+
+        <div class="text-center pt-2 border-t border-slate-800/60">
+          <span class="text-[10px] text-slate-500 flex items-center justify-center space-x-1">
+            <i data-lucide="lock" class="w-3 h-3 text-emerald-400"></i>
+            <span>Privy Protected • Login sem senhas</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- VIEW 2: WHATSAPP / PHONE VIEW -->
+      <div id="privyPhoneView" class="hidden space-y-4">
+        <div class="flex items-center space-x-2">
+          <button onclick="SocialAuthManager.showMainView()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
+          <h4 class="font-bold text-sm text-white">Entrar com WhatsApp</h4>
+        </div>
+        <p class="text-xs text-slate-400">Digite seu número com DDD para receber seu código de acesso instantâneo:</p>
+        
+        <form onsubmit="SocialAuthManager.handlePhoneSubmit(event)" class="space-y-3">
+          <input type="tel" id="privyPhoneInput" required placeholder="(41) 99170-3924" maxlength="15" oninput="maskPhone(this)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono placeholder-slate-600 focus:border-emerald-500 focus:outline-none">
+          <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition active:scale-98">
+            Continuar com WhatsApp
+          </button>
+        </form>
+      </div>
+
+      <!-- VIEW 3: OTP VERIFICATION VIEW -->
+      <div id="privyOtpView" class="hidden space-y-4">
+        <div class="flex items-center space-x-2">
+          <button onclick="SocialAuthManager.showMainView()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
+          <h4 class="font-bold text-sm text-white">Confirmar Código</h4>
+        </div>
+        <p id="privyOtpTargetText" class="text-xs text-slate-400">Digite o código de 6 dígitos enviado para seu WhatsApp/E-mail:</p>
+        
+        <form onsubmit="SocialAuthManager.handleOtpSubmit(event)" class="space-y-3">
+          <input type="text" id="privyOtpInput" required maxlength="6" placeholder="123456" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-center text-lg font-mono tracking-widest text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none">
+          <button type="submit" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition active:scale-98">
+            Confirmar e Entrar
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 7-Day Free Trial Signup Modal -->
+  <div id="trialSignupModal" onclick="if (event.target === this) closeTrialSignupModal()" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-4 flex items-start justify-center">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative my-auto max-h-[92vh] overflow-y-auto">
+      
+      <div class="flex items-start justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="bg-gradient-to-br from-emerald-500 to-teal-600 p-2.5 rounded-2xl text-slate-950 shadow-lg shadow-emerald-500/30">
+            <i data-lucide="gift" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-lg text-white tracking-tight flex items-center space-x-2">
+              <span>Começar 7 Dias Grátis</span>
+              <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase">Trial VIP</span>
+            </h3>
+            <p class="text-xs text-slate-400">Acesso completo e irrestrito ao GiraRota PRO</p>
+          </div>
+        </div>
+        <button onclick="closeTrialSignupModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Trial Benefit Highlights -->
+      <div class="space-y-1.5 bg-slate-950/60 border border-slate-800 rounded-2xl p-3.5 text-xs text-slate-300">
+        <div class="flex items-center space-x-2 text-emerald-400 font-bold">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span>Roteirização ilimitada de 50+ pacotes por rota</span>
+        </div>
+        <div class="flex items-center space-x-2 text-slate-300">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span>Scanner por foto e câmera sem restrições</span>
+        </div>
+        <div class="flex items-center space-x-2 text-slate-300">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span>Exportação para Google Maps e Waze</span>
+        </div>
+        <div class="flex items-center space-x-2 text-slate-300">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span>Não precisa cadastrar cartão de crédito</span>
+        </div>
+      </div>
+
+      <!-- Anti-Fraud Error Banner (Shown if already used) -->
+      <div id="trialErrorBanner" class="hidden bg-red-950/50 border border-red-500/60 text-red-300 p-3 rounded-xl text-xs space-y-2">
+        <div class="flex items-center space-x-2 font-bold text-red-400">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-red-400 flex-shrink-0"></i>
+          <span>Aparelho ou Número já Cadastrado</span>
+        </div>
+        <p id="trialErrorMsg" class="text-[11px] leading-relaxed text-red-300">
+          Identificamos que este aparelho celular ou número de WhatsApp já utilizou o período de 7 dias grátis.
+        </p>
+        <button onclick="closeTrialSignupModal(); openSubscriptionModal();" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2 rounded-lg text-xs transition">
+          Ver Planos de Assinatura (R$ 49,99/mês)
+        </button>
+      </div>
+
+      <!-- Signup Form -->
+      <form id="trialSignupForm" onsubmit="handleTrialSignupSubmit(event)" class="space-y-3">
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-300">Seu Nome Completo:</label>
+          <input type="text" id="trialNameInput" required placeholder="Ex: João da Silva" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none">
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-300">WhatsApp / Celular com DDD:</label>
+          <input type="tel" id="trialPhoneInput" required placeholder="(41) 99170-3924" maxlength="15" oninput="maskPhone(this)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono placeholder-slate-600 focus:border-emerald-500 focus:outline-none">
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-300">E-mail (opcional):</label>
+          <input type="email" id="trialEmailInput" placeholder="seuemail@gmail.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none">
+        </div>
+
+        <div class="pt-2">
+          <button type="submit" id="trialSubmitBtn" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black py-3 px-4 rounded-xl shadow-lg shadow-emerald-900/40 flex items-center justify-center space-x-2 transition transform active:scale-98 cursor-pointer">
+            <i data-lucide="zap" class="w-4 h-4 text-slate-950"></i>
+            <span>Ativar Meus 7 Dias Grátis Agora</span>
+          </button>
+        </div>
+      </form>
+
+      <div class="text-center pt-1 border-t border-slate-800/80">
+        <p class="text-[10px] text-slate-500 flex items-center justify-center space-x-1">
+          <i data-lucide="lock" class="w-3 h-3 text-slate-500"></i>
+          <span>Proteção Anti-Fraude Ativa • 1 teste por aparelho e WhatsApp</span>
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Subscription & Checkout Modal -->
+  <div id="subscriptionModal" onclick="if (event.target === this) closeSubscriptionModal()" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-4 md:p-6 flex items-start justify-center">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl relative my-auto max-h-[92vh] flex flex-col">
+      
+      <!-- Modal Header (Fixed at top of modal) -->
+      <div class="flex items-start justify-between border-b border-slate-800/80 pb-3 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <div class="bg-gradient-to-br from-amber-500 to-yellow-600 p-2.5 rounded-2xl text-slate-950 shadow-lg shadow-amber-500/30">
+            <i data-lucide="crown" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-lg text-white tracking-tight flex items-center space-x-2">
+              <span>Assinatura GiraRota PRO</span>
+              <span class="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30 uppercase tracking-wider">Acesso Total</span>
+            </h3>
+            <p class="text-xs text-slate-400">Roteirização ilimitada, OCR avançado e máxima economia de combustível</p>
+          </div>
+        </div>
+        <button onclick="closeSubscriptionModal()" class="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition cursor-pointer flex-shrink-0" title="Fechar janela (Esc)">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Scrollable Modal Body -->
+      <div class="overflow-y-auto pr-1 sm:pr-2 space-y-4 flex-1 py-3">
+
+      <!-- Active Subscription Card (Visible when PRO is active) -->
+      <div id="activeSubscriptionCard" class="hidden bg-gradient-to-r from-amber-950/40 via-yellow-950/20 to-slate-900 border border-amber-500/40 rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
+            <div>
+              <div class="font-bold text-sm text-white flex items-center space-x-2">
+                <span>Plano PRO Ativo</span>
+                <span id="activePlanBadge" class="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded-full font-bold">MENSAL</span>
+              </div>
+              <p id="activeExpiryText" class="text-xs text-slate-400">Expira em 30 dias</p>
+            </div>
+          </div>
+          <button onclick="SubscriptionManager.cancelPro()" class="text-xs text-red-400 hover:text-red-300 underline font-medium">
+            Desativar
+          </button>
+        </div>
+      </div>
+
+      <!-- Value Proposition Grid -->
+      <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+        <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5 flex items-center space-x-2">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span><strong>Paradas Ilimitadas:</strong> Roteirize 50+ pacotes sem travas</span>
+        </div>
+        <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5 flex items-center space-x-2">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span><strong>Foto / OCR Ilimitado:</strong> Reconhece etiquetas reais</span>
+        </div>
+        <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5 flex items-center space-x-2">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span><strong>Exportação 1-Toque:</strong> Google Maps & Waze</span>
+        </div>
+        <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5 flex items-center space-x-2">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+          <span><strong>100% Offline PWA:</strong> Não depende de sinal de internet</span>
+        </div>
+      </div>
+
+      <!-- Referral Promotion inside Subscription Modal -->
+      <div class="bg-gradient-to-r from-purple-950/60 via-indigo-950/40 to-slate-950 border border-purple-500/40 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-md">
+        <div class="flex items-center space-x-3">
+          <div class="bg-purple-500/20 text-purple-300 p-2 rounded-xl flex-shrink-0">
+            <i data-lucide="gift" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-white flex items-center space-x-1.5 flex-wrap">
+              <span>Quer usar o PRO de graça?</span>
+              <span class="bg-purple-500/30 text-purple-300 text-[9px] px-2 py-0.5 rounded-full font-extrabold uppercase border border-purple-500/30">10 Pagantes = 1 Mês Grátis</span>
+            </div>
+            <p class="text-[11px] text-slate-400">Indique colegas de entrega pelo seu link e ganhe 30 dias de acesso a cada 10 assinantes.</p>
+          </div>
+        </div>
+        <button onclick="closeSubscriptionModal(); openReferralModal();" class="flex-shrink-0 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow cursor-pointer active:scale-95">
+          Meu Link
+        </button>
+      </div>
+
+      <!-- Plan Selector Cards -->
+      <div class="space-y-2">
+        <label class="text-xs font-bold text-slate-200">Escolha o melhor plano para você:</label>
+        <div class="grid grid-cols-3 gap-2.5">
+          <!-- Daily Plan -->
+          <div onclick="selectPlan('daily')" id="planCard-daily" class="plan-card border border-slate-800 bg-slate-950 p-3 rounded-2xl cursor-pointer hover:border-amber-500/60 transition text-center space-y-1">
+            <div class="text-[10px] uppercase font-bold text-slate-400">Diária Express</div>
+            <div class="text-base font-black text-white">R$ 4,99</div>
+            <div class="text-[10px] text-slate-500">24h de acesso</div>
+          </div>
+
+          <!-- Monthly Plan (Default) -->
+          <div onclick="selectPlan('monthly')" id="planCard-monthly" class="plan-card border-2 border-amber-500 bg-gradient-to-b from-amber-500/10 to-slate-950 p-3 rounded-2xl cursor-pointer transition text-center space-y-1 relative shadow-lg shadow-amber-500/10">
+            <div class="absolute -top-2.5 left-1/2 transform -translate-x-1/2 bg-amber-500 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 rounded-full whitespace-nowrap shadow">
+              Mais Popular
+            </div>
+            <div class="text-[10px] uppercase font-bold text-amber-400 pt-1">Mensal Pro</div>
+            <div class="text-base font-black text-white">R$ 49,99</div>
+            <div class="text-[10px] text-amber-300/80">R$ 1,66 / dia</div>
+          </div>
+
+          <!-- Annual Plan -->
+          <div onclick="selectPlan('annual')" id="planCard-annual" class="plan-card border border-slate-800 bg-slate-950 p-3 rounded-2xl cursor-pointer hover:border-amber-500/60 transition text-center space-y-1 relative">
+            <div class="absolute -top-2.5 left-1/2 transform -translate-x-1/2 bg-emerald-500 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 rounded-full whitespace-nowrap shadow">
+              33% OFF
+            </div>
+            <div class="text-[10px] uppercase font-bold text-slate-400 pt-1">Anual Vip</div>
+            <div class="text-base font-black text-white">R$ 399</div>
+            <div class="text-[10px] text-slate-500">12 meses completos</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Section: Pix via Mercado Pago (Streamlined) -->
+      <div class="border-t border-slate-800 pt-4 space-y-3">
+
+          <!-- Mercado Pago Pix Payment Block -->
+          <div class="bg-gradient-to-b from-emerald-950/40 to-slate-950 border border-emerald-500/40 rounded-2xl p-4 text-center space-y-3 shadow-lg shadow-emerald-950/30">
+            <div class="inline-flex items-center space-x-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-[11px] font-bold">
+              <i data-lucide="zap" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Pix Instantâneo · Liberação Automática</span>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex items-center justify-center space-x-2">
+                <span class="text-xs text-slate-400 font-medium">Total a pagar:</span>
+                <span id="pixModalAmount" class="font-black text-emerald-400 text-lg">R$ 49,99</span>
+              </div>
+              <p class="text-slate-400 text-[11px]">
+                Pague via <strong class="text-white">Pix</strong> pelo Mercado Pago e o PRO é liberado na hora.
+              </p>
+            </div>
+
+            <!-- Subscriber Email for Pix Identification & Receipts -->
+            <div class="text-left space-y-1 my-2 bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 shadow-inner">
+              <label class="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                <span class="flex items-center space-x-1">
+                  <i data-lucide="mail" class="w-3.5 h-3.5 text-emerald-400"></i>
+                  <span>Seu E-mail para Recibo e Identificação:</span>
+                </span>
+                <span class="text-[10px] text-emerald-400/90 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Identifica o Pix</span>
+              </label>
+              <input type="email" id="subscriberEmailInput" placeholder="seu.email@exemplo.com" class="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium">
+              <p class="text-[10px] text-slate-500 leading-tight">
+                Esse e-mail aparecerá na descrição oficial do Pix e vinculará a aprovação instantânea à sua conta.
+              </p>
+            </div>
+
+            <!-- Generate Pix Button -->
+            <button onclick="MercadoPagoManager.openCheckout()" class="w-full bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-900/40 flex items-center justify-center space-x-2 text-sm transition transform active:scale-98 cursor-pointer">
+              <i data-lucide="qr-code" class="w-5 h-5 text-white"></i>
+              <span>Gerar QR Code Pix</span>
+            </button>
+
+            <!-- Check Payment Status & WhatsApp -->
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <button onclick="checkManualPixPaymentStatus()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 px-3 rounded-xl border border-slate-700 text-xs flex items-center justify-center space-x-1.5 transition cursor-pointer" title="Consulta a API do Mercado Pago para liberar o plano imediatamente">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span>Verificar Pagamento</span>
+              </button>
+              <button onclick="openWhatsAppProofSupport()" class="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-bold py-2 px-3 rounded-xl border border-emerald-500/30 text-xs flex items-center space-x-1.5 transition cursor-pointer" title="Suporte direto via WhatsApp">
+                <i data-lucide="message-circle" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Suporte</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Voucher / License Key (Collapsible) -->
+          <details class="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 text-xs">
+            <summary class="font-bold text-slate-500 hover:text-slate-300 cursor-pointer flex items-center space-x-2 select-none">
+              <i data-lucide="key" class="w-3.5 h-3.5 text-slate-600"></i>
+              <span>Tenho um código de ativação / voucher</span>
+            </summary>
+            <div class="pt-3 space-y-2 border-t border-slate-800/60 mt-2.5">
+              <div class="flex items-center space-x-2">
+                <input type="text" id="licenseKeyInput" placeholder="Ex: GFPRO-XXXX-XXXX" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono uppercase tracking-wider focus:border-amber-500 focus:outline-none">
+                <button onclick="activateWithLicenseKey()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black px-4 py-2 rounded-xl transition cursor-pointer">
+                  Ativar
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-500">
+                Vouchers corporativos ou de parcerias emitidos pela administração do GiraRota.
+              </p>
+            </div>
+          </details>
+
+      </div>
+
+      </div>
+      <!-- End of Scrollable Body -->
+
+      <!-- Modal Footer (Fixed at bottom of modal) -->
+      <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between flex-shrink-0">
+        <span class="text-[11px] text-slate-400 flex items-center space-x-1.5">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+          <span>Pagamento Seguro Mercado Pago</span>
+        </span>
+        <button onclick="closeSubscriptionModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer flex items-center space-x-1.5">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          <span>Fechar</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Referral Program Modal -->
+  <div id="referralModal" onclick="if (event.target === this) closeReferralModal()" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-4 flex items-start justify-center">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl relative my-auto max-h-[92vh] overflow-y-auto">
+      
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="bg-gradient-to-br from-purple-500 to-indigo-600 p-2.5 rounded-2xl text-white shadow-lg shadow-purple-500/30">
+            <i data-lucide="gift" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-lg text-white tracking-tight flex items-center space-x-2">
+              <span>Indique &amp; Ganhe PRO</span>
+              <span class="bg-purple-500/20 text-purple-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-500/30 uppercase tracking-wider">1 Mês Grátis</span>
+            </h3>
+            <p class="text-xs text-slate-400">A cada 10 parceiros pagantes indicados, ganhe 30 dias de GiraRota PRO</p>
+          </div>
+        </div>
+        <button onclick="closeReferralModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Referral Progress Card -->
+      <div class="bg-gradient-to-br from-purple-950/40 via-slate-900 to-slate-950 border border-purple-500/30 rounded-2xl p-4 space-y-3 shadow-inner">
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-300 font-semibold flex items-center space-x-1.5">
+            <i data-lucide="users" class="w-4 h-4 text-purple-400"></i>
+            <span>Progresso da sua meta:</span>
+          </span>
+          <span class="font-mono text-purple-300 font-bold" id="referralProgressText">0 de 10 pagantes</span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full bg-slate-800 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700">
+          <div id="referralProgressBar" class="bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%;"></div>
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <span id="referralRemainingText">Faltam 10 pagantes para 1 mês grátis</span>
+          <span id="referralTotalMonthsBadge" class="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold">0 meses resgatados</span>
+        </div>
+      </div>
+
+      <!-- Referral Link & Sharing Section -->
+      <div class="space-y-2.5">
+        <label class="text-xs font-bold text-slate-300 flex items-center justify-between">
+          <span>Seu link exclusivo de indicação:</span>
+          <span id="referralCodeBadge" class="font-mono text-amber-400 text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">GIRA-XXXX</span>
+        </label>
+        
+        <div class="flex items-center space-x-2">
+          <input type="text" id="referralLinkInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-purple-200 font-mono focus:outline-none select-all shadow-inner" value="">
+          <button onclick="copyReferralLink()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition shadow active:scale-95 cursor-pointer">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span id="copyReferralBtnText">Copiar</span>
+          </button>
+        </div>
+
+        <!-- WhatsApp 1-Click Share Button -->
+        <button onclick="shareReferralOnWhatsApp()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center space-x-2 transition transform active:scale-98 cursor-pointer">
+          <i data-lucide="message-circle" class="w-4 h-4"></i>
+          <span>Compartilhar no WhatsApp dos Entregadores</span>
+        </button>
+      </div>
+
+      <!-- How It Works Card -->
+      <div class="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5 space-y-2 text-xs text-slate-300">
+        <div class="font-bold text-slate-200 flex items-center space-x-1.5">
+          <i data-lucide="help-circle" class="w-3.5 h-3.5 text-brand-400"></i>
+          <span>Como funciona a indicação de motoristas?</span>
+        </div>
+        <div class="space-y-1.5 text-[11px] text-slate-400 leading-relaxed">
+          <div class="flex items-start space-x-2">
+            <span class="w-4 h-4 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">1</span>
+            <span>Compartilhe seu link nos grupos de WhatsApp dos motoboys e entregadores.</span>
+          </div>
+          <div class="flex items-start space-x-2">
+            <span class="w-4 h-4 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">2</span>
+            <span>Quando um colega acessar pelo seu link e assinar qualquer plano PRO, ele conta como 1 pagante.</span>
+          </div>
+          <div class="flex items-start space-x-2">
+            <span class="w-4 h-4 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">3</span>
+            <span>Ao completar <strong>10 indicados pagantes</strong>, o sistema credita <strong>30 dias de PRO grátis</strong> na sua conta!</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Testing & Simulation Controls (Admin Only) -->
+      <div id="referralSimulationControls" class="hidden border-t border-slate-800/80 pt-3 flex items-center justify-between">
+        <div class="text-[11px] text-slate-500 flex items-center space-x-1">
+          <i data-lucide="sparkles" class="w-3 h-3 text-amber-400"></i>
+          <span>Simulação de Teste:</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="simulateReferralPayment()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-[11px] font-bold py-1.5 px-3 rounded-lg transition active:scale-95 cursor-pointer flex items-center space-x-1" title="Adiciona 1 indicado pagante para testar o contador e ativação do mês grátis">
+            <i data-lucide="user-plus" class="w-3 h-3"></i>
+            <span>+1 Pagante</span>
+          </button>
+          <button onclick="resetReferralSimulation()" class="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-400 border border-slate-700 text-[11px] font-bold py-1.5 px-2.5 rounded-lg transition active:scale-95 cursor-pointer" title="Zerar dados de teste de indicação">
+            <span>Resetar</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast Notification for Payment & Copy -->
+  <div id="paymentToast" class="hidden fixed bottom-5 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900 border border-amber-500/50 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2.5 text-xs">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+    <span id="paymentToastMsg">Código Pix copiado com sucesso!</span>
+  </div>
+
+  <!-- Settings / System Configuration Modal -->
+  <div id="settingsModal" onclick="if (event.target === this) document.getElementById('settingsModal').classList.add('hidden')" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 overflow-y-auto p-3 sm:p-4 flex items-start justify-center">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative my-auto max-h-[92vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <h3 class="font-bold text-base text-white flex items-center space-x-2">
+            <i data-lucide="shield-alert" class="w-5 h-5 text-amber-400"></i>
+            <span>Painel do Administrador</span>
+          </h3>
+          <p class="text-[11px] text-amber-400/80">Configurações restritas ao gestor do sistema</p>
+        </div>
+        <button onclick="document.getElementById('settingsModal').classList.add('hidden')" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-300 max-h-[70vh] overflow-y-auto pr-1">
+        <div class="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl space-y-1">
+          <div class="flex items-center space-x-2 text-emerald-400 font-bold">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Motor 100% Online Ativo</span>
+          </div>
+          <p class="text-slate-400 text-[11px] leading-relaxed">
+            Você está executando a versão online completa no GitHub Pages. O leitor de câmera, decodificador de etiquetas e otimizador de rotas TSP funcionam diretamente no site sem necessidade de nenhum servidor local.
+          </p>
+        </div>
+
+        <div class="border-t border-slate-800 pt-3 space-y-2">
+          <h4 class="font-bold text-slate-200 text-xs">Opções de Roteirização:</h4>
+
+          <div class="space-y-2">
+            <label class="flex items-start space-x-3 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer hover:border-brand-500 transition">
+              <input type="radio" name="engineMode" value="standalone" checked class="mt-0.5 text-brand-600 focus:ring-brand-500">
+              <div>
+                <strong class="text-white block font-semibold">Motor Nuvem Padrão (Recomendado)</strong>
+                <span class="text-slate-400 text-[11px]">Roteamento TSP instantâneo no navegador, 100% online.</span>
+              </div>
+            </label>
+
+            <label class="flex items-start space-x-3 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer hover:border-brand-500 transition">
+              <input type="radio" name="engineMode" value="api" class="mt-0.5 text-brand-600 focus:ring-brand-500">
+              <div>
+                <strong class="text-white block font-semibold">Servidor Remoto Privado (Opcional)</strong>
+                <span class="text-slate-400 text-[11px]">Para equipes que utilizam servidor backend próprio em Docker Swarm/Cloud.</span>
+              </div>
+            </label>
+          </div>
+
+          <div id="apiUrlContainer" class="space-y-1 opacity-50 pointer-events-none transition pt-1">
+            <label class="font-semibold text-slate-400 text-[11px]">URL da API Própria (se houver):</label>
+            <input type="text" id="apiEndpointInput" value="http://localhost:8000" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono">
+          </div>
+        </div>
+
+        <!-- Admin Payment Recebedor Configuration -->
+        <div class="border-t border-slate-800 pt-3 space-y-2">
+          <h4 class="font-bold text-slate-200 text-xs flex items-center space-x-1.5">
+            <i data-lucide="wallet" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Configurações de Pagamento (Recebedor)</span>
+          </h4>
+          <p class="text-slate-400 text-[11px]">
+            Personalize sua chave Pix para receber os pagamentos dos entregadores diretamente na sua conta bancária.
+          </p>
+          <div class="space-y-1.5 pt-1">
+            <label class="font-semibold text-slate-400 text-[11px]">Sua Chave Pix (E-mail, CPF, CNPJ ou Celular):</label>
+            <input type="text" id="adminPixKeyInput" value="pix@girarota.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono" placeholder="sua-chave-pix@banco.com">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="space-y-1">
+              <label class="font-semibold text-slate-400 text-[11px]">Nome do Titular:</label>
+              <input type="text" id="adminPixNameInput" value="GIRAROTA BRASIL" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono">
+            </div>
+            <div class="space-y-1">
+              <label class="font-semibold text-slate-400 text-[11px]">Cidade:</label>
+              <input type="text" id="adminPixCityInput" value="CAMPO LARGO" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono">
+            </div>
+          </div>
+          <div class="space-y-1.5 pt-1">
+            <label class="font-semibold text-slate-400 text-[11px]">WhatsApp de Suporte / Comprovantes:</label>
+            <input type="text" id="adminWhatsAppPhoneInput" value="41991703924" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono" placeholder="41991703924">
+          </div>
+        </div>
+
+        <!-- Mercado Pago / Mercado Livre Gateway Configuration -->
+        <div class="border-t border-slate-800 pt-3 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-slate-200 text-xs flex items-center space-x-1.5">
+              <i data-lucide="credit-card" class="w-3.5 h-3.5 text-blue-400"></i>
+              <span>Integração Mercado Pago (Mercado Livre)</span>
+            </h4>
+            <span id="mpConnectionBadge" class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+              Não Conectado
+            </span>
+          </div>
+          <p class="text-slate-400 text-[11px]">
+            Cole o <strong>link de pagamento</strong> do Mercado Pago (mpago.la). Nunca cole Access Token ou Client Secret aqui: tudo neste navegador é visível.
+          </p>
+          
+          <div class="space-y-1.5">
+            <label class="font-semibold text-slate-400 text-[11px]">Link Direto de Pagamento (opcional / mpago.la):</label>
+            <input type="text" id="adminMpLinkMonthlyInput" value="" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono" placeholder="https://mpago.la/...">
+          </div>
+        </div>
+
+        <!-- Social Auth & Privy Configuration -->
+        <div class="border-t border-slate-800 pt-3 space-y-2">
+          <h4 class="font-bold text-slate-200 text-xs flex items-center space-x-1.5">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span>Login Social & Privy (Opcional)</span>
+          </h4>
+          <p class="text-slate-400 text-[11px]">
+            Conecte sua conta do <strong>Privy.io</strong> ou <strong>Google Cloud</strong> para autenticação de entregadores.
+          </p>
+          <div class="space-y-1.5 pt-1">
+            <label class="font-semibold text-slate-400 text-[11px]">Privy App ID (dashboard.privy.io):</label>
+            <input type="text" id="adminPrivyAppIdInput" value="" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono" placeholder="Ex: cl_123456789">
+          </div>
+          <div class="space-y-1.5">
+            <label class="font-semibold text-slate-400 text-[11px]">Google OAuth Client ID (Google Cloud Console):</label>
+            <input type="text" id="adminGoogleClientIdInput" value="" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono" placeholder="Ex: client-id.apps.googleusercontent.com">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+        <button onclick="lockAdminMode()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center space-x-1.5 cursor-pointer">
+          <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+          <span>Bloquear &amp; Ocultar</span>
+        </button>
+        <button onclick="saveSettings()" class="bg-brand-600 hover:bg-brand-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition flex items-center space-x-1.5 cursor-pointer">
+          <i data-lucide="save" class="w-3.5 h-3.5"></i>
+          <span>Salvar Alterações</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-slate-900 border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+    <div class="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+        <span class="font-semibold text-slate-400">GiraRota &copy; 2026</span>
+        <span class="hidden sm:inline text-slate-700">•</span>
+        <span>Roteirização Last-Mile Inteligente</span>
+      </div>
+      <div class="flex flex-wrap items-center justify-center gap-4 text-xs">
+        <span class="text-slate-400">
+          Um produto da empresa <a href="https://www.criptografia.app/" target="_blank" rel="noopener noreferrer" class="font-bold text-amber-400 hover:text-amber-300 hover:underline transition">CRIPTOGRAFIA</a>
+        </span>
+        <span class="hidden sm:inline text-slate-700">•</span>
+        <span>Compatível com Waze & Google Maps</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Datasets & Logic -->
+  <script src="datasets.js"></script>
+  <script src="app.js?v=21"></script>
+</body>
+</html>
