@@ -73,27 +73,7 @@ function initMap() {
     scrollWheelZoom: false,
   }).setView([currentOrigin.lat, currentOrigin.lng], 13);
 
-  // CARTO basemaps: free public tiles, no key needed (attribution below).
-  const voyagerLayer = L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png`,
-    {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: "abcd",
-      maxZoom: 20,
-    }
-  );
-
-  const darkLayer = L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png`,
-    {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: "abcd",
-      maxZoom: 20,
-    }
-  );
-
+  // OpenStreetMap tiles: no API key, so nothing secret ships to the browser.
   const osmLayer = L.tileLayer(
     "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     {
@@ -103,16 +83,23 @@ function initMap() {
     }
   );
 
-  // Set Voyager as active base layer
-  voyagerLayer.addTo(map);
+  const hotLayer = L.tileLayer(
+    "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+    {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, tiles by <a href="https://www.hotosm.org/">HOT</a>',
+      subdomains: "abc",
+      maxZoom: 19,
+    }
+  );
 
-  // Add clean layer switcher
+  osmLayer.addTo(map);
+
   L.control
     .layers(
       {
-        "🗺️ CARTO Voyager": voyagerLayer,
-        "🌙 CARTO Noturno": darkLayer,
-        "🌐 OpenStreetMap": osmLayer,
+        "🗺️ OpenStreetMap": osmLayer,
+        "🌐 OSM Humanitário": hotLayer,
       },
       null,
       { position: "topright" }
