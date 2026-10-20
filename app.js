@@ -3241,7 +3241,7 @@ const MP_PAYMENT_LINKS = {
 
 // Payments API (Cloudflare Worker, repo metaver5o/girarota-pay). It holds the
 // token server-side. Empty = not deployed yet: checkout falls back to the link.
-const PAY_API = "";
+const PAY_API = "https://girarota-pay.c-r-i-p-t-o-g-r-a-f-i-a.workers.dev";
 
 const MercadoPagoManager = {
   pollingTimer: null,
